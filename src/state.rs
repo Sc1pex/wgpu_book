@@ -1,10 +1,11 @@
+use image::GenericImageView;
 use wgpu::util::DeviceExt;
 use winit::{
     event::{ElementState, KeyboardInput, VirtualKeyCode, WindowEvent},
     window::Window,
 };
 
-use crate::vertex::Vertex;
+use crate::{texture, vertex::Vertex};
 
 pub struct State {
     surface: wgpu::Surface,
@@ -13,15 +14,13 @@ pub struct State {
     config: wgpu::SurfaceConfiguration,
     pub size: winit::dpi::PhysicalSize<u32>,
 
-    solid_render_pipeline: wgpu::RenderPipeline,
-    corner_render_pipeline: wgpu::RenderPipeline,
-    active_render_pipeline_index: u32,
+    render_pipeline: wgpu::RenderPipeline,
 
-    tri_vertex_buffer: wgpu::Buffer,
-    penta_vertex_buffer: wgpu::Buffer,
-    tri_index_buffer: wgpu::Buffer,
-    penta_index_buffer: wgpu::Buffer,
-    active_buffer_index: u32,
+    diffuse_bind_group: wgpu::BindGroup,
+    diffuse_texture: texture::Texture,
+
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
 
     data: Data,
 }
@@ -29,10 +28,8 @@ pub struct State {
 pub struct Data {
     pub bg_color: wgpu::Color,
 
-    pub num_tri_vertices: u32,
-    pub num_penta_vertices: u32,
-    pub num_tri_indices: u32,
-    pub num_penta_indices: u32,
+    pub num_vertices: u32,
+    pub num_indices: u32,
 }
 
 impl State {
@@ -72,109 +69,99 @@ impl State {
         };
         surface.configure(&device, &config);
 
-        let solid_shader =
-            device.create_shader_module(&wgpu::include_wgsl!("../shaders/solid.wgsl"));
-        let corner_shader =
-            device.create_shader_module(&wgpu::include_wgsl!("../shaders/corners.wgsl"));
+        let diffuse_bytes = include_bytes!("../tree.png");
+        let diffuse_texture =
+            texture::Texture::from_bytes(&device, &queue, diffuse_bytes, Some("Texture image"))
+                .unwrap();
+
+        let diffuse_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Texture Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        count: None,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        count: None,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    },
+                ],
+            });
+        let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Texture Bind Group"),
+            layout: &diffuse_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
+                },
+            ],
+        });
+
+        let shader = device.create_shader_module(&wgpu::include_wgsl!("../shaders/solid.wgsl"));
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline layout"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[&diffuse_bind_group_layout],
                 push_constant_ranges: &[],
             });
-        let solid_render_pipeline =
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("Render Pipeline"),
-                layout: Some(&render_pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &solid_shader,
-                    entry_point: "vs_main",
-                    buffers: &[Vertex::desc()],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &solid_shader,
-                    entry_point: "fs_main",
-                    targets: &[wgpu::ColorTargetState {
-                        format: config.format,
-                        blend: Some(wgpu::BlendState::REPLACE),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    }],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    strip_index_format: None,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: Some(wgpu::Face::Back),
-                    // Requires Features::DEPTH_CLIP_CONTROL
-                    unclipped_depth: false,
-                    // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
-                    polygon_mode: wgpu::PolygonMode::Fill,
-                    // Requires Features::CONSERVATIVE_RASTERIZATION
-                    conservative: false,
-                },
-                depth_stencil: None,
-                multisample: wgpu::MultisampleState {
-                    count: 1,
-                    mask: !0,
-                    alpha_to_coverage_enabled: false,
-                },
-                multiview: None,
-            });
-        let corner_render_pipeline =
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("Render Pipeline"),
-                layout: Some(&render_pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &corner_shader,
-                    entry_point: "vs_main",
-                    buffers: &[Vertex::desc()],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &corner_shader,
-                    entry_point: "fs_main",
-                    targets: &[wgpu::ColorTargetState {
-                        format: config.format,
-                        blend: Some(wgpu::BlendState::REPLACE),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    }],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    strip_index_format: None,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: Some(wgpu::Face::Back),
-                    // Requires Features::DEPTH_CLIP_CONTROL
-                    unclipped_depth: false,
-                    // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
-                    polygon_mode: wgpu::PolygonMode::Fill,
-                    // Requires Features::CONSERVATIVE_RASTERIZATION
-                    conservative: false,
-                },
-                depth_stencil: None,
-                multisample: wgpu::MultisampleState {
-                    count: 1,
-                    mask: !0,
-                    alpha_to_coverage_enabled: false,
-                },
-                multiview: None,
-            });
-
-        let tri_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Triangle Vertex Buffer"),
-            contents: bytemuck::cast_slice(crate::TRIANGLE_VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Render Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: "vs_main",
+                buffers: &[Vertex::desc()],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: "fs_main",
+                targets: &[wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                }],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                // Requires Features::DEPTH_CLIP_CONTROL
+                unclipped_depth: false,
+                // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
+                polygon_mode: wgpu::PolygonMode::Fill,
+                // Requires Features::CONSERVATIVE_RASTERIZATION
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
         });
-        let penta_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Pentagon Vertex Buffer"),
             contents: bytemuck::cast_slice(crate::PENTAGON_VERTICES),
             usage: wgpu::BufferUsages::VERTEX,
         });
-        let tri_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Triangle Index Buffer"),
-            contents: bytemuck::cast_slice(crate::TRIANGLE_INDICES),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-        let penta_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Pentagon Index Buffer"),
             contents: bytemuck::cast_slice(crate::PENTAGON_INDICES),
             usage: wgpu::BufferUsages::INDEX,
@@ -187,15 +174,13 @@ impl State {
             config,
             size,
 
-            solid_render_pipeline,
-            corner_render_pipeline,
-            active_render_pipeline_index: 0,
+            render_pipeline,
 
-            tri_vertex_buffer,
-            penta_vertex_buffer,
-            tri_index_buffer,
-            penta_index_buffer,
-            active_buffer_index: 0,
+            diffuse_bind_group,
+            diffuse_texture,
+
+            vertex_buffer,
+            index_buffer,
 
             data: Data {
                 bg_color: wgpu::Color {
@@ -205,10 +190,8 @@ impl State {
                     a: 1.0,
                 },
 
-                num_tri_vertices: crate::TRIANGLE_VERTICES.len() as u32,
-                num_penta_vertices: crate::PENTAGON_VERTICES.len() as u32,
-                num_tri_indices: crate::TRIANGLE_INDICES.len() as u32,
-                num_penta_indices: crate::PENTAGON_INDICES.len() as u32,
+                num_vertices: crate::PENTAGON_VERTICES.len() as u32,
+                num_indices: crate::PENTAGON_INDICES.len() as u32,
             },
         }
     }
@@ -226,30 +209,6 @@ impl State {
                 self.data.bg_color.r = position.x / self.size.width as f64;
                 self.data.bg_color.g = position.y / self.size.height as f64;
                 // println!("{:?}", position);
-                true
-            }
-            WindowEvent::KeyboardInput {
-                input:
-                    KeyboardInput {
-                        virtual_keycode: Some(VirtualKeyCode::R),
-                        state: ElementState::Pressed,
-                        ..
-                    },
-                ..
-            } => {
-                self.active_render_pipeline_index = 1 - self.active_render_pipeline_index;
-                true
-            }
-            WindowEvent::KeyboardInput {
-                input:
-                    KeyboardInput {
-                        virtual_keycode: Some(VirtualKeyCode::S),
-                        state: ElementState::Pressed,
-                        ..
-                    },
-                ..
-            } => {
-                self.active_buffer_index = 1 - self.active_buffer_index;
                 true
             }
             _ => false,
@@ -288,23 +247,11 @@ impl State {
                 depth_stencil_attachment: None,
             });
 
-            render_pass.set_pipeline(match self.active_render_pipeline_index {
-                0 => &self.solid_render_pipeline,
-                1 => &self.corner_render_pipeline,
-                _ => unreachable!(),
-            });
-
-            if self.active_buffer_index == 0 {
-                render_pass.set_vertex_buffer(0, self.tri_vertex_buffer.slice(..));
-                render_pass
-                    .set_index_buffer(self.tri_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                render_pass.draw_indexed(0..self.data.num_tri_indices, 0, 0..1);
-            } else {
-                render_pass.set_vertex_buffer(0, self.penta_vertex_buffer.slice(..));
-                render_pass
-                    .set_index_buffer(self.penta_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                render_pass.draw_indexed(0..self.data.num_penta_indices, 0, 0..1);
-            }
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..self.data.num_indices, 0, 0..1);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
