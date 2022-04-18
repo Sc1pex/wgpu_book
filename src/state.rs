@@ -21,6 +21,8 @@ pub struct State {
 
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
+    num_vertices: u32,
+    num_indices: u32,
 
     camera: Camera,
     camera_controller: CameraController,
@@ -28,14 +30,7 @@ pub struct State {
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
 
-    data: Data,
-}
-
-pub struct Data {
-    pub bg_color: wgpu::Color,
-
-    pub num_vertices: u32,
-    pub num_indices: u32,
+    bg_color: wgpu::Color,
 }
 
 impl State {
@@ -229,6 +224,8 @@ impl State {
 
             vertex_buffer,
             index_buffer,
+            num_vertices: crate::PENTAGON_VERTICES.len() as u32,
+            num_indices: crate::PENTAGON_INDICES.len() as u32,
 
             camera,
             camera_controller,
@@ -236,16 +233,11 @@ impl State {
             camera_buffer,
             camera_bind_group,
 
-            data: Data {
-                bg_color: wgpu::Color {
-                    r: 0.1,
-                    g: 0.2,
-                    b: 0.2,
-                    a: 1.0,
-                },
-
-                num_vertices: crate::PENTAGON_VERTICES.len() as u32,
-                num_indices: crate::PENTAGON_INDICES.len() as u32,
+            bg_color: wgpu::Color {
+                r: 0.1,
+                g: 0.2,
+                b: 0.2,
+                a: 1.0,
             },
         }
     }
@@ -260,8 +252,8 @@ impl State {
     pub fn input(&mut self, event: &WindowEvent) -> bool {
         match event {
             WindowEvent::CursorMoved { position, .. } => {
-                self.data.bg_color.r = position.x / self.size.width as f64;
-                self.data.bg_color.g = position.y / self.size.height as f64;
+                self.bg_color.r = position.x / self.size.width as f64;
+                self.bg_color.g = position.y / self.size.height as f64;
                 // println!("{:?}", position);
                 true
             }
@@ -301,7 +293,7 @@ impl State {
                         view: &view,
                         resolve_target: None,
                         ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(self.data.bg_color),
+                            load: wgpu::LoadOp::Clear(self.bg_color),
                             store: true,
                         },
                     },
@@ -314,7 +306,7 @@ impl State {
             render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..self.data.num_indices, 0, 0..1);
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
