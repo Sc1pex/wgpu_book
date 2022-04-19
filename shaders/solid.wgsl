@@ -10,22 +10,30 @@ struct VertexOutput {
     [[location(0)]] tex_coords: vec2<f32>;
 };
 
+struct InstanceInput {
+    [[location(5)]] model_matrix_0: vec4<f32>;
+    [[location(6)]] model_matrix_1: vec4<f32>;
+    [[location(7)]] model_matrix_2: vec4<f32>;
+    [[location(8)]] model_matrix_3: vec4<f32>;
+};
+
 struct CameraUniform {
     view_proj: mat4x4<f32>;
 };
 [[group(1), binding(0)]]
 var<uniform> camera: CameraUniform;
 
-struct ModelUniform {
-    model: mat4x4<f32>;
-};
-[[group(2), binding(0)]]
-var<uniform> model_matrix: ModelUniform;
-
 [[stage(vertex)]]
-fn vs_main(model: VertexInput) -> VertexOutput {
+fn vs_main(model: VertexInput, instace: InstanceInput) -> VertexOutput {
+    let model_matrix = mat4x4<f32>(
+        instace.model_matrix_0,
+        instace.model_matrix_1,
+        instace.model_matrix_2,
+        instace.model_matrix_3
+    );
+
     var out: VertexOutput;
-    out.clip_position = camera.view_proj * model_matrix.model * vec4<f32>(model.position, 1.0);
+    out.clip_position = camera.view_proj * model_matrix * vec4<f32>(model.position, 1.0);
     out.tex_coords = model.tex_coords;
 
     return out;
