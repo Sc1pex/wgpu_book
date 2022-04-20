@@ -3,10 +3,10 @@ use std::f32::consts::PI;
 use state::State;
 use vertex::Vertex;
 use winit::{
-    dpi::PhysicalSize,
-    event::{Event, WindowEvent},
+    dpi::{PhysicalPosition, PhysicalSize},
+    event::{DeviceEvent, Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
+    window::{Fullscreen, WindowBuilder},
 };
 
 mod camera;
@@ -52,6 +52,7 @@ pub async fn run() {
         .with_inner_size(PhysicalSize::<u32>::new(1280, 720))
         .build(&event_loop)
         .unwrap();
+    window.set_cursor_visible(false);
 
     let mut state = State::new(&window).await;
 
@@ -63,20 +64,33 @@ pub async fn run() {
                 ref event,
                 window_id,
             } if window_id == window.id() => {
-                if !state.input(event) {
-                    match event {
-                        WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                        WindowEvent::Resized(physical_size) => {
-                            state.resize(*physical_size);
-                        }
-                        WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                            state.resize(**new_inner_size);
-                        }
-
-                        _ => {}
+                state.input(event);
+                match event {
+                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                    WindowEvent::Resized(physical_size) => {
+                        state.resize(*physical_size);
                     }
+                    WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                        state.resize(**new_inner_size);
+                    }
+                    WindowEvent::CursorMoved { .. } => {
+                        window
+                            .set_cursor_position(PhysicalPosition {
+                                x: window.inner_size().width as f32 / 2.0,
+                                y: window.inner_size().height as f32 / 2.0,
+                            })
+                            .unwrap();
+                    }
+                    _ => {}
                 }
             }
+
+            Event::DeviceEvent {
+                event: DeviceEvent::MouseMotion { delta },
+                ..
+            } => state
+                .camera_controller
+                .cursor_move(glam::vec2(delta.0 as f32, delta.1 as f32)),
 
             Event::RedrawRequested(window_id) if window_id == window.id() => {
                 state.update();

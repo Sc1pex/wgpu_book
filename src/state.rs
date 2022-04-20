@@ -27,7 +27,7 @@ pub struct State {
     num_indices: u32,
 
     camera: Camera,
-    camera_controller: CameraController,
+    pub camera_controller: CameraController,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
 
@@ -35,6 +35,7 @@ pub struct State {
     instance_buffer: wgpu::Buffer,
 
     bg_color: wgpu::Color,
+    last_time: std::time::Instant,
 }
 
 const NUM_INSTANCES_PER_ROW: u32 = 30;
@@ -121,14 +122,14 @@ impl State {
         let camera = Camera {
             eye: (0.0, 1.0, 2.0).into(),
             up: glam::Vec3::Y,
-            target: (0.0, 0.0, 0.0).into(),
+            front: (0.0, 0.0, -1.0).into(),
 
             aspect: config.width as f32 / config.height as f32,
             fovy: 45.0,
             zfar: 100.0,
             znear: 0.1,
         };
-        let camera_controller = CameraController::new(0.1);
+        let camera_controller = CameraController::new(0.1, 0.1);
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera buffer"),
@@ -173,7 +174,7 @@ impl State {
             .iter()
             .map(Instance::to_matrix)
             .collect::<Vec<_>>();
-        println!("{:?}", instance_data);
+        // println!("{:?}", instance_data);
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Instance buffer"),
             contents: bytemuck::cast_slice(&instance_data),
@@ -267,6 +268,7 @@ impl State {
                 b: 0.2,
                 a: 1.0,
             },
+            last_time: std::time::Instant::now(),
         }
     }
 
@@ -277,20 +279,23 @@ impl State {
         self.surface.configure(&self.device, &self.config);
     }
 
-    pub fn input(&mut self, event: &WindowEvent) -> bool {
+    pub fn input(&mut self, event: &WindowEvent) {
         match event {
             WindowEvent::CursorMoved { position, .. } => {
                 self.bg_color.r = position.x / self.size.width as f64;
                 self.bg_color.g = position.y / self.size.height as f64;
                 // println!("{:?}", position);
-                true
             }
-            _ => self.camera_controller.process_events(event),
+            _ => {}
         }
+        self.camera_controller.process_events(event);
     }
 
     pub fn update(&mut self) {
-        self.camera_controller.update_camera(&mut self.camera);
+        let current_time = std::time::Instant::now();
+        let delta_time = current_time.duration_since(self.last_time).as_secs_f32();
+        self.camera_controller
+            .update_camera(&mut self.camera, delta_time);
         self.queue.write_buffer(
             &self.camera_buffer,
             0,
