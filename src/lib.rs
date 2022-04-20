@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use state::State;
 use vertex::Vertex;
 use winit::{
@@ -12,14 +14,6 @@ mod instance;
 mod state;
 mod texture;
 mod vertex;
-
-#[rustfmt::skip]
-pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
-    1.0, 0.0, 0.0, 0.0,
-    0.0, 1.0, 0.0, 0.0,
-    0.0, 0.0, 0.5, 0.0,
-    0.0, 0.0, 0.5, 1.0,
-);
 
 const PENTAGON_VERTICES: &[Vertex] = &[
     Vertex {
@@ -45,6 +39,10 @@ const PENTAGON_VERTICES: &[Vertex] = &[
 ];
 
 const PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
+
+pub fn deg_to_rad(deg: f32) -> f32 {
+    deg * PI / 90.0
+}
 
 pub async fn run() {
     env_logger::init();

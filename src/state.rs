@@ -1,10 +1,10 @@
-use cgmath::{prelude::*, InnerSpace, SquareMatrix};
 use wgpu::util::DeviceExt;
 use winit::{event::WindowEvent, window::Window};
 
 use crate::{
-    camera::{Camera, CameraController, CameraUniform},
-    instance::{Instance, InstanceMatrix},
+    camera::{Camera, CameraController},
+    deg_to_rad,
+    instance::Instance,
     texture,
     vertex::Vertex,
 };
@@ -28,7 +28,6 @@ pub struct State {
 
     camera: Camera,
     camera_controller: CameraController,
-    camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
 
@@ -38,12 +37,7 @@ pub struct State {
     bg_color: wgpu::Color,
 }
 
-const NUM_INSTANCES_PER_ROW: u32 = 2;
-const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(
-    NUM_INSTANCES_PER_ROW as f32 * 0.5,
-    0.0,
-    NUM_INSTANCES_PER_ROW as f32 * 0.5,
-);
+const NUM_INSTANCES_PER_ROW: u32 = 30;
 
 impl State {
     pub async fn new(window: &Window) -> Self {
@@ -126,7 +120,7 @@ impl State {
 
         let camera = Camera {
             eye: (0.0, 1.0, 2.0).into(),
-            up: cgmath::Vector3::unit_y(),
+            up: glam::Vec3::Y,
             target: (0.0, 0.0, 0.0).into(),
 
             aspect: config.width as f32 / config.height as f32,
@@ -135,12 +129,10 @@ impl State {
             znear: 0.1,
         };
         let camera_controller = CameraController::new(0.1);
-        let mut camera_uniform = CameraUniform::new();
-        camera_uniform.update_vp(&camera);
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera buffer"),
-            contents: bytemuck::cast_slice(&[camera_uniform]),
+            contents: bytemuck::cast_slice(&camera.build_vp_matrix().to_cols_array_2d()),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
         let camera_bind_group_layout =
@@ -169,21 +161,9 @@ impl State {
         let instances = (0..NUM_INSTANCES_PER_ROW)
             .flat_map(|z| {
                 (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                    let position = cgmath::Vector3 {
-                        x: x as f32,
-                        y: 0.0,
-                        z: z as f32,
-                    } - INSTANCE_DISPLACEMENT;
-                    let rotation = if position.is_zero() {
-                        // This is needed so an object at (0, 0, 0) won't get scaled to zero
-                        // as Quaternions can effect scale if they're not created correctly
-                        cgmath::Quaternion::from_axis_angle(
-                            cgmath::Vector3::unit_z(),
-                            cgmath::Deg(0.0),
-                        )
-                    } else {
-                        cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
-                    };
+                    let position = glam::Vec3::new(x as f32, 0.0, z as f32);
+                    let rotation =
+                        glam::Quat::from_axis_angle(position.normalize(), deg_to_rad(45.0));
 
                     Instance { position, rotation }
                 })
@@ -193,6 +173,7 @@ impl State {
             .iter()
             .map(Instance::to_matrix)
             .collect::<Vec<_>>();
+        println!("{:?}", instance_data);
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Instance buffer"),
             contents: bytemuck::cast_slice(&instance_data),
@@ -212,7 +193,7 @@ impl State {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[Vertex::desc(), InstanceMatrix::desc()],
+                buffers: &[Vertex::desc(), Instance::desc()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -274,7 +255,6 @@ impl State {
 
             camera,
             camera_controller,
-            camera_uniform,
             camera_buffer,
             camera_bind_group,
 
@@ -311,11 +291,10 @@ impl State {
 
     pub fn update(&mut self) {
         self.camera_controller.update_camera(&mut self.camera);
-        self.camera_uniform.update_vp(&self.camera);
         self.queue.write_buffer(
             &self.camera_buffer,
             0,
-            bytemuck::cast_slice(&[self.camera_uniform]),
+            bytemuck::cast_slice(&self.camera.build_vp_matrix().to_cols_array_2d()),
         );
     }
 
