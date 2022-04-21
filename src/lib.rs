@@ -6,7 +6,7 @@ use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::{DeviceEvent, Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::{Fullscreen, WindowBuilder},
+    window::WindowBuilder,
 };
 
 mod camera;
@@ -38,7 +38,7 @@ const PENTAGON_VERTICES: &[Vertex] = &[
     }, // E
 ];
 
-const PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
+const PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4, 0];
 
 pub fn deg_to_rad(deg: f32) -> f32 {
     deg * PI / 90.0

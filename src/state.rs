@@ -38,7 +38,7 @@ pub struct State {
     last_time: std::time::Instant,
 }
 
-const NUM_INSTANCES_PER_ROW: u32 = 30;
+const NUM_INSTANCES_PER_ROW: u32 = 10;
 
 impl State {
     pub async fn new(window: &Window) -> Self {
@@ -129,7 +129,7 @@ impl State {
             zfar: 100.0,
             znear: 0.1,
         };
-        let camera_controller = CameraController::new(0.1, 0.1);
+        let camera_controller = CameraController::new(15.0, 0.1);
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera buffer"),
@@ -159,10 +159,15 @@ impl State {
             }],
         });
 
+        let instance_displacement = glam::vec3(
+            NUM_INSTANCES_PER_ROW as f32 * 0.5,
+            0.0,
+            NUM_INSTANCES_PER_ROW as f32 * 0.5,
+        );
         let instances = (0..NUM_INSTANCES_PER_ROW)
             .flat_map(|z| {
                 (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                    let position = glam::Vec3::new(x as f32, 0.0, z as f32);
+                    let position = glam::Vec3::new(x as f32, 0.0, z as f32) - instance_displacement;
                     let rotation =
                         glam::Quat::from_axis_angle(position.normalize(), deg_to_rad(45.0));
 
@@ -174,7 +179,7 @@ impl State {
             .iter()
             .map(Instance::to_matrix)
             .collect::<Vec<_>>();
-        // println!("{:?}", instance_data);
+        println!("{:?}", instance_data);
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Instance buffer"),
             contents: bytemuck::cast_slice(&instance_data),
@@ -282,8 +287,8 @@ impl State {
     pub fn input(&mut self, event: &WindowEvent) {
         match event {
             WindowEvent::CursorMoved { position, .. } => {
-                self.bg_color.r = position.x / self.size.width as f64;
-                self.bg_color.g = position.y / self.size.height as f64;
+                // self.bg_color.r = position.x / self.size.width as f64;
+                // self.bg_color.g = position.y / self.size.height as f64;
                 // println!("{:?}", position);
             }
             _ => {}
@@ -294,6 +299,7 @@ impl State {
     pub fn update(&mut self) {
         let current_time = std::time::Instant::now();
         let delta_time = current_time.duration_since(self.last_time).as_secs_f32();
+        self.last_time = current_time;
         self.camera_controller
             .update_camera(&mut self.camera, delta_time);
         self.queue.write_buffer(
