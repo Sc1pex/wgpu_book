@@ -168,8 +168,11 @@ impl State {
             .flat_map(|z| {
                 (0..NUM_INSTANCES_PER_ROW).map(move |x| {
                     let position = glam::Vec3::new(x as f32, 0.0, z as f32) - instance_displacement;
-                    let rotation =
-                        glam::Quat::from_axis_angle(position.normalize(), deg_to_rad(45.0));
+                    let rotation = if position == glam::vec3(0.0, 0.0, 0.0) {
+                        glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0)
+                    } else {
+                        glam::Quat::from_axis_angle(position.normalize(), deg_to_rad(45.0))
+                    };
 
                     Instance { position, rotation }
                 })

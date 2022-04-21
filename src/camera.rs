@@ -119,26 +119,28 @@ impl CameraController {
             deg_to_rad(self.yaw).sin() * deg_to_rad(self.pitch).cos(),
         );
         camera.front = new_front.normalize();
-        // println!("{:?}, ({}, {})", camera.front, self.yaw, self.pitch);
         let right = camera.front.cross(camera.up);
 
+        let mut move_vec = glam::vec3(0.0, 0.0, 0.0);
         if self.is_forward_pressed {
-            camera.eye += camera.front * self.speed * delta_time;
+            move_vec += camera.front;
         }
         if self.is_backward_pressed {
-            camera.eye -= camera.front * self.speed * delta_time;
+            move_vec -= camera.front;
         }
         if self.is_right_pressed {
-            camera.eye += right * self.speed * delta_time;
+            move_vec += right;
         }
         if self.is_left_pressed {
-            camera.eye -= right * self.speed * delta_time;
+            move_vec -= right;
         }
         if self.is_up_pressed {
-            camera.eye += camera.up * self.speed * delta_time;
+            move_vec += camera.up;
         }
         if self.is_down_pressed {
-            camera.eye -= camera.up * self.speed * delta_time;
+            move_vec -= camera.up;
         }
+        move_vec = move_vec.normalize_or_zero() * self.speed * delta_time;
+        camera.eye += move_vec;
     }
 }
