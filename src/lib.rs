@@ -41,7 +41,7 @@ const PENTAGON_VERTICES: &[Vertex] = &[
 const PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4, 0];
 
 pub fn deg_to_rad(deg: f32) -> f32 {
-    deg * PI / 90.0
+    deg * PI / 180.0
 }
 
 pub async fn run() {
